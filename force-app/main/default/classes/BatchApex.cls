@@ -1,8 +1,8 @@
-global class BatchApex implements Database.Batchable<SObject> {
+global class BatchApex implements Database.Batchable<SObject>, Database.AllowsCallouts {
 
     global Database.QueryLocator start(Database.BatchableContext context) {
-        String query = 'select Id from Animal__c limit 10';
-        system.debug('query'+query);
+        String query = 'SELECT Id FROM Animal__c';
+        System.debug('Query ----> ' + query);
         return Database.getQueryLocator(query);
     }
 
@@ -11,28 +11,36 @@ global class BatchApex implements Database.Batchable<SObject> {
         HttpRequest request = new HttpRequest();
         request.setEndpoint('https://th-apex-http-callout.herokuapp.com/animals');
         request.setMethod('GET');
-        HttpResponse response = http.send(request);
-        system.debug('reponse----->'+response);
-    
-        
-        if (response.getStatusCode() == 200) {
-            Map<String, Object> results = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
-            List<Object> animals = (List<Object>) results.get('animals');
-            
-            List<Animal__c> animalRecords = new List<Animal__c>();
-            for (Object animal : animals) {
-                if (animal instanceof Map<String, Object>) {
-                    Map<String, Object> animalMap = (Map<String, Object>) animal;
-                    
-                    Animal__c a = new Animal__c(
-                        Name = (String) animalMap.get('animals') 
-                    );
-                    animalRecords.add(a);
+
+        try {
+            HttpResponse response = http.send(request);
+
+            if (response.getStatusCode() == 200) {
+                Map<String, Object> results = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+                List<Object> animals = (List<Object>) results.get('animals');
+
+                List<Animal__c> animalRecords = new List<Animal__c>();
+                for (Object animal : animals) {
+                    if (animal instanceof String) {
+                        String animalName = (String) animal;
+                        if (animalName != null) {
+                            Animal__c a = new Animal__c(Name = animalName);
+                            animalRecords.add(a);
+                        }
+                    }
                 }
+
+                System.debug('Animal records ----> ' + animalRecords);
+
+                
+                Database.insert(animalRecords, false);
+            } else {
+                System.debug('request failed--------> ' + response.getStatusCode());
             }
-            system.debug('animal records----->'+animalRecords);
-            insert animalRecords;
+        } catch (Exception ex) {
+            System.debug('Exception during callout------> ' + ex.getMessage());
         }
     }
+
     global void finish(Database.BatchableContext context) {}
 }
